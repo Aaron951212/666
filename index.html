@@ -69,8 +69,12 @@
         <button data-timeframe="1w">1W</button>
       </div>
       <div id="chart" class="chart-wrapper"></div>
-      <div id="chart-legend" class="chart-legend"></div>
+      <div id="chart-legend" class="chart-legend">
+        <div class="legend-item"><label><input id="toggle-ema20" type="checkbox" checked /> EMA20</label></div>
+        <div class="legend-item"><label><input id="toggle-ema50" type="checkbox" checked /> EMA50</label></div>
+      </div>
       <div id="volume-chart" class="chart-wrapper" style="min-height:120px; margin-top:8px;"></div>
+      <div id="volume-tooltip" class="volume-tooltip" style="display:none"></div>
     </div>
 
     <div class="panel">

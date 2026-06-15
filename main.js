@@ -399,6 +399,23 @@ function setupChart() {
   return mainChart;
 }
 
+function setupLegendControls() {
+  const e20 = document.getElementById('toggle-ema20');
+  const e50 = document.getElementById('toggle-ema50');
+  if (e20) e20.addEventListener('change', (ev) => {
+    const show = ev.target.checked;
+    if (!state.latestEMAs) return;
+    if (show) state.chart.ema20Series.setData(state.latestEMAs.ema20 || []);
+    else state.chart.ema20Series.setData([]);
+  });
+  if (e50) e50.addEventListener('change', (ev) => {
+    const show = ev.target.checked;
+    if (!state.latestEMAs) return;
+    if (show) state.chart.ema50Series.setData(state.latestEMAs.ema50 || []);
+    else state.chart.ema50Series.setData([]);
+  });
+}
+
 async function loadChartData(timeframe) {
   try {
     const candleData = await fetchCandleData(timeframe);
@@ -511,6 +528,24 @@ function connectKlineSocket(interval) {
   state.klineSocket = ws;
 }
 
+// volume tooltip handling
+function setupVolumeTooltip() {
+  const tooltip = document.getElementById('volume-tooltip');
+  if (!tooltip || !state.chart || !state.chart.volumeChart) return;
+  state.chart.volumeChart.subscribeCrosshairMove(param => {
+    if (!param || !param.time) { tooltip.style.display = 'none'; return; }
+    const x = param.domPosition.x + refs.volumeContainer.getBoundingClientRect().left + window.scrollX;
+    const y = refs.volumeContainer.getBoundingClientRect().top + window.scrollY + 8;
+    const seriesPrices = param.seriesPrices;
+    const volVal = seriesPrices ? Object.values(seriesPrices)[0] : null;
+    if (volVal == null) { tooltip.style.display = 'none'; return; }
+    tooltip.style.display = 'block';
+    tooltip.style.left = `${x}px`;
+    tooltip.style.top = `${y}px`;
+    tooltip.innerText = `成交量: ${formatLarge(volVal)} BTC`;
+  });
+}
+
 function updateTimeframe(event) {
   state.timeframe = event.target.dataset.timeframe;
   refs.chartTimeButtons.forEach(btn => btn.classList.toggle('active', btn === event.target));
@@ -579,6 +614,34 @@ function connectLivePriceSocket() {
   state.socket = stream;
 }
 
+// simple tick -> 1m aggregation
+function aggregateTradeTickToMinute(trade) {
+  if (!state.chart || !state.chart.candleSeries) return;
+  const t = trade.T; // trade time in ms
+  const minute = Math.floor(t / 60000) * 60; // seconds
+  const price = Number(trade.p);
+  const qty = Number(trade.q || trade.l || 0);
+  if (!state.tickAgg) state.tickAgg = { minute: minute, bar: null };
+  if (!state.tickAgg.bar || state.tickAgg.minute !== minute) {
+    // new bar
+    state.tickAgg.minute = minute;
+    const open = price, high = price, low = price, close = price, volume = qty;
+    state.tickAgg.bar = { time: minute, open, high, low, close };
+    // append as new bar
+    try { state.chart.candleSeries.update(state.tickAgg.bar); } catch (e) {}
+    try { state.chart.volumeSeries.update({ time: minute, value: volume, color: '#22c55e' }); } catch (e) {}
+  } else {
+    // update existing
+    const b = state.tickAgg.bar;
+    b.high = Math.max(b.high, price);
+    b.low = Math.min(b.low, price);
+    b.close = price;
+    try { state.chart.candleSeries.update(b); } catch (e) {}
+    try { state.chart.volumeSeries.update({ time: minute, value: (state.tickAgg.vol || 0) + qty, color: price >= b.open ? '#22c55e' : '#fb7185' }); } catch (e) {}
+    state.tickAgg.vol = (state.tickAgg.vol || 0) + qty;
+  }
+}
+
 function init() {
   setupChart();
   refs.chartTimeButtons.forEach(btn => btn.addEventListener('click', updateTimeframe));
@@ -594,6 +657,8 @@ function init() {
   refreshData();
   loadChartData(state.timeframe);
   connectKlineSocket(state.timeframe);
+  setupLegendControls();
+  setupVolumeTooltip();
   setInterval(refreshData, AUTO_UPDATE_MS);
   window.addEventListener('resize', () => {
     if (state.chart && state.chart.chart) {
