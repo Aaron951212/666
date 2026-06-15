@@ -3,46 +3,171 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>MediaPipe 表情辨識</title>
-  <style>
-    body { margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #111827; color: #f8fafc; }
-    .container { max-width: 900px; margin: 0 auto; padding: 16px; }
-    h1 { margin-bottom: 12px; font-size: clamp(1.8rem, 3vw, 2.6rem); text-align: center; }
-    .controls { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-bottom: 14px; }
-    button, input[type="button"] { border: none; border-radius: 12px; padding: 12px 18px; background: #2563eb; color: white; font-size: 1rem; cursor: pointer; transition: transform .12s ease, background .12s ease; }
-    button:hover, input[type="button"]:hover { background: #1d4ed8; transform: translateY(-1px); }
-    button:disabled, input[type="button"]:disabled { opacity: 0.5; cursor: default; }
-    input[type="file"] { color: #f8fafc; }
-    .video-wrapper { position: relative; width: 100%; aspect-ratio: 16 / 12; max-height: 75vh; background: #0f172a; border-radius: 18px; overflow: hidden; }
-    video, canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-    .status { margin-top: 14px; padding: 16px; border-radius: 18px; background: rgba(15, 23, 42, 0.92); box-shadow: 0 10px 30px rgba(15, 23, 42, 0.45); }
-    .status p { margin: 8px 0; line-height: 1.6; }
-    .status #expression { font-size: 1.15rem; font-weight: 600; }
-    @media (max-width: 640px) { .controls { flex-direction: column; } }
-  </style>
+  <title>BTC AI 自動分析平台</title>
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="container">
-    <h1>MediaPipe 表情辨識</h1>
-    <div class="controls">
-      <button id="start-camera">開始相機</button>
-      <button id="stop-camera" disabled>停止相機</button>
-      <input id="switch-camera" type="button" value="切換鏡頭" disabled />
-      <input id="upload-file" type="file" accept="image/*,video/*" />
+  <div class="app-shell">
+    <div class="app-topbar">
+      <div class="app-title">
+        <h1>BTC AI 自動分析平台</h1>
+        <p>專業級比特幣行情分析儀表板，結合 RSI、MACD、EMA、ATR 與市場情緒，提供即時報價、AI 行情分析、預測與風險管理。</p>
+      </div>
+      <div class="top-actions">
+        <button id="dark-toggle">深色模式</button>
+        <button id="alert-button">新增價格警報</button>
+      </div>
     </div>
-    <div class="video-wrapper">
-      <video id="input_video" autoplay muted playsinline></video>
-      <canvas id="output_canvas"></canvas>
+
+    <div class="dashboard-grid">
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <h2>即時 BTC/USDT</h2>
+            <small>30 秒自動更新</small>
+          </div>
+          <div class="badge badge-green"><span class="badge-dot"></span>Live</div>
+        </div>
+        <div class="cards-grid">
+          <div class="stat-card"><strong id="btc-price">$0.00</strong><span>最新價格</span></div>
+          <div class="stat-card"><strong id="btc-change">0.00%</strong><span>24 小時漲跌幅</span></div>
+          <div class="stat-card"><strong id="btc-volume">0</strong><span>24 小時成交量</span></div>
+          <div class="stat-card"><strong id="btc-marketcap">$0</strong><span>估算市值</span></div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <h2>AI 行情分析</h2>
+            <small>Trend Detection Engine</small>
+          </div>
+          <div id="market-rating"></div>
+        </div>
+        <div class="indicator-card">
+          <div class="label">推薦策略</div>
+          <strong id="analysis-action">觀望</strong>
+          <p id="analysis-report" class="trend">以交易員等級視角分析當前趨勢。</p>
+        </div>
+      </section>
     </div>
-    <div class="status">
-      <p id="status">請按「開始相機」以啟動手機攝影機，或上傳圖片/影片進行偵測。</p>
-      <p id="expression">目前表情：等待中</p>
+
+    <div class="panel">
+      <div class="panel-header">
+        <div>
+          <h2>K 線圖</h2>
+          <small>TradingView Lightweight Charts</small>
+        </div>
+      </div>
+      <div class="chart-toolbar">
+        <button data-timeframe="1h">1H</button>
+        <button data-timeframe="4h">4H</button>
+        <button data-timeframe="1d">1D</button>
+        <button data-timeframe="1w">1W</button>
+      </div>
+      <div id="chart" class="chart-wrapper"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <div>
+          <h2>技術指標儀表板</h2>
+          <small>Smart Signal Scanner</small>
+        </div>
+      </div>
+      <div class="indicator-grid">
+        <div class="indicator-card"><div class="label">RSI</div><strong id="rsi-value">0</strong><div class="trend">超買/超賣偵測</div></div>
+        <div class="indicator-card"><div class="label">MACD</div><strong id="macd-value">0</strong><div class="trend">動量與趨勢強度</div></div>
+        <div class="indicator-card"><div class="label">EMA20</div><strong id="ema20-value">0</strong><div class="trend">短期均線</div></div>
+        <div class="indicator-card"><div class="label">EMA50</div><strong id="ema50-value">0</strong><div class="trend">中期趨勢</div></div>
+        <div class="indicator-card"><div class="label">ATR</div><strong id="atr-value">0</strong><div class="trend">波動率風險監控</div></div>
+        <div class="indicator-card"><div class="label">成交量</div><strong id="volume-value">0</strong><div class="trend">資金流向</div></div>
+      </div>
+    </div>
+
+    <div class="dashboard-grid">
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <h2>市場情緒分析</h2>
+            <small>Fear & Greed 指數</small>
+          </div>
+        </div>
+        <div class="indicator-card">
+          <div class="label">指數</div>
+          <strong id="fear-greed">0</strong>
+          <div class="trend" id="fear-label">中性</div>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <h2>AI 預測模組</h2>
+            <small>1H / 4H / 24H 未來方向</small>
+          </div>
+        </div>
+        <ul id="forecast-list" class="signal-list"></ul>
+        <p class="disclaimer">僅供參考，不構成投資建議。</p>
+      </section>
+    </div>
+
+    <div class="dashboard-grid">
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <h2>AI Analyst Panel</h2>
+            <small>智能分析與趨勢判斷</small>
+          </div>
+        </div>
+        <div class="indicator-card">
+          <div class="label">分析評級</div>
+          <strong id="analyst-grade">-</strong>
+          <div id="signal-box" class="trend">分析簡報。</div>
+        </div>
+      </section>
+      <section class="panel risk-panel">
+        <div class="panel-header">
+          <div>
+            <h2>Risk Management Dashboard</h2>
+            <small>風險評估與資本保護</small>
+          </div>
+        </div>
+        <div class="risk-tile"><strong>EMA 趨勢</strong><p id="risk-engine">載入中…</p></div>
+        <div class="risk-tile"><strong>波動風險</strong><p>ATR 驗證市場震盪。</p></div>
+        <div class="risk-tile"><strong>操作策略</strong><p>設定價格警報與倉位管理。</p></div>
+      </section>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <div>
+          <h2>Advanced Alerts / 歷史紀錄</h2>
+          <small>Smart Signal Scanner & Local Storage</small>
+        </div>
+      </div>
+      <div class="dashboard-grid">
+        <div class="panel">
+          <form id="alert-form" class="alert-form">
+            <label>提醒價格 (USD)</label>
+            <input id="alert-price" type="number" placeholder="例如 45000" />
+            <label>提醒類型</label>
+            <select id="alert-type"><option value="above">高於</option><option value="below">低於</option></select>
+            <button type="submit">新增價格警報</button>
+          </form>
+        </div>
+        <div class="panel">
+          <h3>有效警報</h3>
+          <ul id="alert-list" class="alert-list"></ul>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>分析歷史紀錄</h3>
+        <ul id="history-list" class="history-list"></ul>
+      </div>
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
-  <script src="./script.js"></script>
+  <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+  <script src="main.js"></script>
 </body>
 </html>
