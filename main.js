@@ -44,6 +44,8 @@ const refs = {
   daytradeReport: document.getElementById('daytrade-report'),
   riskEngine: document.getElementById('risk-engine'),
   chartContainer: document.getElementById('chart'),
+  volumeContainer: document.getElementById('volume-chart'),
+  chartLegend: document.getElementById('chart-legend'),
 };
 
 function toNumber(value) {
@@ -342,9 +344,10 @@ window.removeAlert = function(index) {
 };
 
 function setupChart() {
-  const chart = LightweightCharts.createChart(refs.chartContainer, {
+  // main chart
+  const mainChart = LightweightCharts.createChart(refs.chartContainer, {
     width: refs.chartContainer.clientWidth,
-    height: 420,
+    height: 320,
     layout: {
       background: { color: 'rgba(2,6,23,0.72)' },
       textColor: '#cbd5e1',
@@ -357,7 +360,7 @@ function setupChart() {
     rightPriceScale: { borderColor: 'rgba(148,163,184,0.12)' },
     timeScale: { borderColor: 'rgba(148,163,184,0.12)' },
   });
-  const candleSeries = chart.addCandlestickSeries({
+  const candleSeries = mainChart.addCandlestickSeries({
     upColor: '#22c55e',
     downColor: '#fb7185',
     borderDownColor: '#fb7185',
@@ -365,20 +368,35 @@ function setupChart() {
     wickDownColor: '#fca5a5',
     wickUpColor: '#86efac',
   });
-  const volumeSeries = chart.addHistogramSeries({
+  const ema20Series = mainChart.addLineSeries({ color: '#f59e0b', lineWidth: 1 });
+  const ema50Series = mainChart.addLineSeries({ color: '#60a5fa', lineWidth: 1 });
+
+  // volume chart (separate pane) with synced time scale
+  const volumeChart = LightweightCharts.createChart(refs.volumeContainer, {
+    width: refs.volumeContainer.clientWidth,
+    height: 120,
+    layout: { background: { color: 'transparent' }, textColor: '#cbd5e1' },
+    grid: { vertLines: { visible: false }, horzLines: { visible: false } },
+    rightPriceScale: { visible: false },
+    timeScale: { visible: true, borderColor: 'rgba(148,163,184,0.08)' },
+  });
+  const volumeSeries = volumeChart.addHistogramSeries({
     priceFormat: { type: 'volume' },
-    scaleMargins: { top: 0.8, bottom: 0 },
     priceScaleId: '',
+    scaleMargins: { top: 0.1, bottom: 0 },
     color: '#2b6f37',
   });
-  const ema20Series = chart.addLineSeries({ color: '#f59e0b', lineWidth: 1 });
-  const ema50Series = chart.addLineSeries({ color: '#60a5fa', lineWidth: 1 });
-  state.chart = { chart, candleSeries };
-  // expose new series
-  state.chart.volumeSeries = volumeSeries;
-  state.chart.ema20Series = ema20Series;
-  state.chart.ema50Series = ema50Series;
-  return chart;
+
+  // sync visible range both ways
+  mainChart.timeScale().subscribeVisibleTimeRangeChange(range => {
+    if (range && volumeChart) volumeChart.timeScale().setVisibleRange(range);
+  });
+  volumeChart.timeScale().subscribeVisibleTimeRangeChange(range => {
+    if (range && mainChart) mainChart.timeScale().setVisibleRange(range);
+  });
+
+  state.chart = { chart: mainChart, candleSeries, volumeChart, volumeSeries, ema20Series, ema50Series };
+  return mainChart;
 }
 
 async function loadChartData(timeframe) {
@@ -416,16 +434,88 @@ async function loadChartData(timeframe) {
     if (state.chart.ema20Series) state.chart.ema20Series.setData(ema20Data);
     if (state.chart.ema50Series) state.chart.ema50Series.setData(ema50Data);
 
-    state.chart.chart.timeScale().fitContent();
+    // store for websocket updates
+    state.latestCandles = { candles: formatted, volumes: volumeData };
+
+    // update legend
+    const lastEma20 = ema20Data.slice(-1)[0];
+    const lastEma50 = ema50Data.slice(-1)[0];
+    if (refs.chartLegend) {
+      refs.chartLegend.innerHTML = `
+        <div class="legend-item"><span class="legend-swatch" style="background:#f59e0b"></span>EMA20: ${lastEma20 ? toNumber(lastEma20.value) : '-'} </div>
+        <div class="legend-item"><span class="legend-swatch" style="background:#60a5fa"></span>EMA50: ${lastEma50 ? toNumber(lastEma50.value) : '-'} </div>`;
+    }
+
+    // fit both charts
+    try { state.chart.chart.timeScale().fitContent(); } catch (e) {}
+    try { state.chart.volumeChart.timeScale().fitContent(); } catch (e) {}
   } catch (error) {
     console.error('載入 K 線資料失敗：', error);
   }
+}
+
+function connectKlineSocket(interval) {
+  // close existing kline socket if any
+  if (state.klineSocket) {
+    try { state.klineSocket.close(); } catch (e) {}
+    state.klineSocket = null;
+  }
+  const ws = new WebSocket(`wss://stream.binance.com:9443/ws/btcusdt@kline_${interval}`);
+  ws.addEventListener('message', event => {
+    const payload = JSON.parse(event.data);
+    const k = payload.k;
+    if (!k) return;
+    const point = {
+      time: Math.floor(k.t / 1000),
+      open: Number(k.o),
+      high: Number(k.h),
+      low: Number(k.l),
+      close: Number(k.c),
+    };
+    const volPoint = { time: Math.floor(k.t / 1000), value: Number(k.v), color: Number(k.c) >= Number(k.o) ? '#22c55e' : '#fb7185' };
+
+    // update series (update will append/replace correctly)
+    try { state.chart.candleSeries.update(point); } catch (e) {}
+    try { state.chart.volumeSeries.update(volPoint); } catch (e) {}
+
+    // update stored candles
+    if (state.latestCandles && Array.isArray(state.latestCandles.candles)) {
+      const last = state.latestCandles.candles[state.latestCandles.candles.length - 1];
+      if (last && last.time === point.time) {
+        state.latestCandles.candles[state.latestCandles.candles.length - 1] = point;
+        state.latestCandles.volumes[state.latestCandles.volumes.length - 1] = volPoint;
+      } else {
+        state.latestCandles.candles.push(point);
+        state.latestCandles.volumes.push(volPoint);
+        if (state.latestCandles.candles.length > 200) state.latestCandles.candles.shift(), state.latestCandles.volumes.shift();
+      }
+      // recompute EMAs and update lines
+      const closes = state.latestCandles.candles.map(c => Number(c.close));
+      const ema20 = calcEMA(closes, 20).map((v, i) => ({ time: state.latestCandles.candles[i].time, value: Number(v) }));
+      const ema50 = calcEMA(closes, 50).map((v, i) => ({ time: state.latestCandles.candles[i].time, value: Number(v) }));
+      try { state.chart.ema20Series.setData(ema20); } catch (e) {}
+      try { state.chart.ema50Series.setData(ema50); } catch (e) {}
+
+      // update legend values
+      const lastEma20 = ema20.slice(-1)[0];
+      const lastEma50 = ema50.slice(-1)[0];
+      if (refs.chartLegend) {
+        refs.chartLegend.innerHTML = `
+          <div class="legend-item"><span class="legend-swatch" style="background:#f59e0b"></span>EMA20: ${lastEma20 ? toNumber(lastEma20.value) : '-'} </div>
+          <div class="legend-item"><span class="legend-swatch" style="background:#60a5fa"></span>EMA50: ${lastEma50 ? toNumber(lastEma50.value) : '-'} </div>`;
+      }
+    }
+  });
+  ws.addEventListener('close', () => setTimeout(() => connectKlineSocket(interval), 2000));
+  ws.addEventListener('error', () => ws.close());
+  state.klineSocket = ws;
 }
 
 function updateTimeframe(event) {
   state.timeframe = event.target.dataset.timeframe;
   refs.chartTimeButtons.forEach(btn => btn.classList.toggle('active', btn === event.target));
   loadChartData(state.timeframe);
+  connectKlineSocket(state.timeframe);
   refreshData();
 }
 
@@ -503,10 +593,12 @@ function init() {
   connectLivePriceSocket();
   refreshData();
   loadChartData(state.timeframe);
+  connectKlineSocket(state.timeframe);
   setInterval(refreshData, AUTO_UPDATE_MS);
   window.addEventListener('resize', () => {
     if (state.chart && state.chart.chart) {
       state.chart.chart.applyOptions({ width: refs.chartContainer.clientWidth });
+      if (state.chart.volumeChart) state.chart.volumeChart.applyOptions({ width: refs.volumeContainer.clientWidth });
     }
   });
 }
