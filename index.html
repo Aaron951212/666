@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>BTC AI 自動分析平台</title>
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=1" />
 </head>
 <body>
   <div class="app-shell">
@@ -26,7 +26,10 @@
             <h2>即時 BTC/USDT</h2>
             <small>30 秒自動更新</small>
           </div>
-          <div class="badge badge-green"><span class="badge-dot"></span>Live</div>
+          <div>
+            <div class="badge badge-green"><span class="badge-dot"></span>Live</div>
+            <small id="live-updated" class="live-update">更新時間：--</small>
+          </div>
         </div>
         <div class="cards-grid">
           <div class="stat-card"><strong id="btc-price">$0.00</strong><span>最新價格</span></div>
@@ -124,6 +127,10 @@
           <strong id="analyst-grade">-</strong>
           <div id="signal-box" class="trend">分析簡報。</div>
         </div>
+        <div class="indicator-card">
+          <div class="label">日內交易分析</div>
+          <p id="daytrade-report" class="trend">等待即時 AI 交易判斷。</p>
+        </div>
       </section>
       <section class="panel risk-panel">
         <div class="panel-header">
@@ -168,6 +175,6 @@
   </div>
 
   <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
-  <script src="main.js"></script>
+  <script src="main.js?v=1"></script>
 </body>
 </html>

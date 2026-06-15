@@ -37,9 +37,11 @@ const refs = {
   alertType: document.getElementById('alert-type'),
   darkToggle: document.getElementById('dark-toggle'),
   alertButton: document.getElementById('alert-button'),
+  liveUpdated: document.getElementById('live-updated'),
   historyList: document.getElementById('history-list'),
   analystGrade: document.getElementById('analyst-grade'),
   signalBox: document.getElementById('signal-box'),
+  daytradeReport: document.getElementById('daytrade-report'),
   riskEngine: document.getElementById('risk-engine'),
   chartContainer: document.getElementById('chart'),
 };
@@ -181,6 +183,32 @@ function getMarketMood(score) {
   return { label: '極度恐懼', color: 'red' };
 }
 
+function analyzeDayTrading(indicators, price, direction) {
+  const { rsi, macd, ema20, ema50, atr } = indicators;
+  const trendUp = ema20 > ema50;
+  const momentum = macd > 0;
+  const volumeSignal = direction > 0 ? '資金流入加速' : '資金動能偏弱';
+  const volatilityLabel = atr > price * 0.01 ? '波動較高，風險管理需嚴格' : '波動溫和，選擇機會較清晰';
+  let signal = '中性觀察';
+  let detail = '當前日內動態尚未形成明確單邊趨勢，建議等待 5 分鐘級別突破或回檔位。';
+
+  if (trendUp && momentum && rsi < 70 && direction > 0) {
+    signal = '日內多頭優勢';
+    detail = `短線價量配合，多頭趨勢仍在，${volumeSignal}，${volatilityLabel}。可尋找回撤買點並嚴設風險。`;
+  } else if (!trendUp && !momentum && rsi > 30 && direction < 0) {
+    signal = '日內空頭壓力';
+    detail = `短線趨勢偏弱，${volumeSignal}，${volatilityLabel}。建議觀察反彈後的阻力與分批減倉。`;
+  } else if (rsi > 75) {
+    signal = '超買回檔警戒';
+    detail = `RSI 進入超買區，短線可能回檔，注意風險控制與停利。`;
+  } else if (rsi < 25) {
+    signal = '超賣反彈機會';
+    detail = `RSI 進入超賣區，若價格接近支撐可留意反彈，採取小倉位。`;
+  }
+
+  return { signal, detail };
+}
+
 function createForecastRow(label, probability, range) {
   return `<li class="signal-item"><strong>${label}</strong><small>上漲機率: ${probability.up}% / 下跌機率: ${probability.down}%</small><small>預估區間: ${range}</small></li>`;
 }
@@ -263,8 +291,12 @@ function updateUI(ticker, fearData) {
 
   refs.analystGrade.innerHTML = renderStatusBadge(signal.grade);
   refs.signalBox.innerHTML = `<p>${signal.advice}</p>`;
+  const liveDirection = Number(ticker.lastPrice) - Number(ticker.prevClose || ticker.lastPrice);
+  const dayTrade = analyzeDayTrading(state.indicators, Number(ticker.lastPrice), liveDirection);
+  refs.daytradeReport.innerHTML = `<strong>${dayTrade.signal}</strong><br>${dayTrade.detail}`;
   refs.riskEngine.innerHTML = `<p>ATR ${state.indicators.atr} 表示短期波動。<br>EMA20/EMA50 趨勢：${state.indicators.ema20 > state.indicators.ema50 ? '多頭延續' : '空頭壓力'}。<br>成交量趨勢：${Number(ticker.volume) > state.indicators.volume ? '加碼成交' : '流動性縮減'}。</p>`;
 
+  refs.liveUpdated.innerText = `更新時間：${new Date().toLocaleTimeString()}`;
   updateIndicatorStyles();
   renderHistory();
 }
@@ -338,15 +370,27 @@ function setupChart() {
 }
 
 async function loadChartData(timeframe) {
-  const candleData = await fetchCandleData(timeframe);
-  const formatted = candleData.map(c => ({
-    time: Math.floor(c[0] / 1000),
-    open: Number(c[1]),
-    high: Number(c[2]),
-    low: Number(c[3]),
-    close: Number(c[4]),
-  }));
-  state.chart.candleSeries.setData(formatted);
+  try {
+    const candleData = await fetchCandleData(timeframe);
+    const formatted = candleData.map(c => ({
+      time: Math.floor(c[0] / 1000),
+      open: Number(c[1]),
+      high: Number(c[2]),
+      low: Number(c[3]),
+      close: Number(c[4]),
+    }));
+
+    if (!state.chart || !state.chart.candleSeries) return;
+    if (!formatted.length) {
+      console.warn('K 線資料為空，請檢查 API 回傳');
+      return;
+    }
+
+    state.chart.candleSeries.setData(formatted);
+    state.chart.chart.timeScale().fitContent();
+  } catch (error) {
+    console.error('載入 K 線資料失敗：', error);
+  }
 }
 
 function updateTimeframe(event) {
@@ -396,6 +440,26 @@ function askNotificationPermission() {
   }
 }
 
+function connectLivePriceSocket() {
+  const stream = new WebSocket('wss://stream.binance.com:9443/ws/btcusdt@trade');
+  stream.addEventListener('message', event => {
+    const data = JSON.parse(event.data);
+    const price = Number(data.p);
+    if (!Number.isFinite(price)) return;
+    state.priceData = { ...state.priceData, lastPrice: price.toString(), prevClose: state.priceData?.lastPrice };
+    refs.price.innerHTML = formatPrice(price);
+    refs.liveUpdated.innerText = `實時更新：${new Date(data.T).toLocaleTimeString()}`;
+    if (state.priceData) {
+      const lastPrice = Number(state.priceData.lastPrice);
+      const prevClose = Number(state.priceData.prevClose || lastPrice);
+      refs.change.innerHTML = `${toNumber((lastPrice - prevClose) / prevClose * 100)}%`;
+    }
+  });
+  stream.addEventListener('close', () => setTimeout(connectLivePriceSocket, 3000));
+  stream.addEventListener('error', () => stream.close());
+  state.socket = stream;
+}
+
 function init() {
   setupChart();
   refs.chartTimeButtons.forEach(btn => btn.addEventListener('click', updateTimeframe));
@@ -407,6 +471,7 @@ function init() {
   saveDarkMode(state.darkMode);
   setupAlerts();
   askNotificationPermission();
+  connectLivePriceSocket();
   refreshData();
   loadChartData(state.timeframe);
   setInterval(refreshData, AUTO_UPDATE_MS);

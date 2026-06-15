@@ -290,6 +290,19 @@ body.light-mode .alert-form select {
   background: rgba(15, 23, 42, 0.95);
 }
 
+.live-update {
+  display: block;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.analysis-detail {
+  margin-top: 12px;
+  line-height: 1.7;
+  color: #cbd5e1;
+}
+
 .badge-dot {
   width: 10px;
   height: 10px;
