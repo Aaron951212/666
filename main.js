@@ -365,7 +365,19 @@ function setupChart() {
     wickDownColor: '#fca5a5',
     wickUpColor: '#86efac',
   });
+  const volumeSeries = chart.addHistogramSeries({
+    priceFormat: { type: 'volume' },
+    scaleMargins: { top: 0.8, bottom: 0 },
+    priceScaleId: '',
+    color: '#2b6f37',
+  });
+  const ema20Series = chart.addLineSeries({ color: '#f59e0b', lineWidth: 1 });
+  const ema50Series = chart.addLineSeries({ color: '#60a5fa', lineWidth: 1 });
   state.chart = { chart, candleSeries };
+  // expose new series
+  state.chart.volumeSeries = volumeSeries;
+  state.chart.ema20Series = ema20Series;
+  state.chart.ema50Series = ema50Series;
   return chart;
 }
 
@@ -386,7 +398,24 @@ async function loadChartData(timeframe) {
       return;
     }
 
+    // prepare volume and EMA series
+    const volumeData = candleData.map(c => ({
+      time: Math.floor(c[0] / 1000),
+      value: Number(c[5]),
+      color: Number(c[4]) >= Number(c[1]) ? '#22c55e' : '#fb7185',
+    }));
+
+    const closePrices = candleData.map(c => Number(c[4]));
+    const ema20 = calcEMA(closePrices, 20);
+    const ema50 = calcEMA(closePrices, 50);
+    const ema20Data = ema20.map((v, i) => ({ time: Math.floor(candleData[i][0] / 1000), value: Number(v) }));
+    const ema50Data = ema50.map((v, i) => ({ time: Math.floor(candleData[i][0] / 1000), value: Number(v) }));
+
     state.chart.candleSeries.setData(formatted);
+    if (state.chart.volumeSeries) state.chart.volumeSeries.setData(volumeData);
+    if (state.chart.ema20Series) state.chart.ema20Series.setData(ema20Data);
+    if (state.chart.ema50Series) state.chart.ema50Series.setData(ema50Data);
+
     state.chart.chart.timeScale().fitContent();
   } catch (error) {
     console.error('載入 K 線資料失敗：', error);
